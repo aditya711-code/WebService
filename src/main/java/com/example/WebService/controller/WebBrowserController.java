@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
+import java.util.Optional;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,8 +23,11 @@ public class WebBrowserController {
             System.out.println("Browser edge");
             processBuilder=new ProcessBuilder("cmd","/c","start msedge",url);
         }
+        else if(browser.equalsIgnoreCase("firefox")){
+            processBuilder=new ProcessBuilder("cmd","/c","start firefox",url);
+        }
         else {
-            processBuilder=new ProcessBuilder("cmd", "/c", "start", url);
+            processBuilder=new ProcessBuilder("cmd", "/c", "start chrome", url);
         }
         System.out.println("Opening browser "+browser+" with"+url);
         processBuilder.start();
@@ -39,6 +42,9 @@ public class WebBrowserController {
         if(browser.equalsIgnoreCase("Google Chrome")){
             processBuilder=new ProcessBuilder("taskkill", "/F", "/IM", "chrome.exe");
 
+        }
+        else if(browser.equalsIgnoreCase("firefox")){
+            processBuilder=new ProcessBuilder("taskkill","/F","/IM","firefox.exe");
         }
         else {
             processBuilder=new ProcessBuilder("taskkill","/F","/IM","msedge.exe");
@@ -71,21 +77,36 @@ public class WebBrowserController {
 
     @GetMapping("/getUrl")
     public String getActiveTabUrl(@RequestParam("browser")String browser)throws IOException{
-        ProcessBuilder processBuilder = new ProcessBuilder("powershell.exe", "-Command",
-                "$edge = Get-Process msedge | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object -First 1; if ($edge) { $edge.MainWindowTitle } else { 'No active tabs found.' }");
 
-        Process process=processBuilder.start();
+        ProcessBuilder processBuilder;
+        switch (browser.toLowerCase()) {
+            case "microsoft edge":
+                processBuilder = new ProcessBuilder("powershell.exe", "-Command",
+                        "$edge = Get-Process msedge | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object -First 1;" +
+                                " if ($edge) { $edge.MainWindowTitle } else { 'No active tabs found.' }");
+                break;
 
-        InputStream inputStream=process.getInputStream();
+            case "google chrome":
+                System.out.println("Entering google chrome to get active tab url");
+                processBuilder = new ProcessBuilder("powershell.exe", "-Command",
+                        "$chrome = Get-Process chrome | Where-Object { $_.MainWindowTitle -match ' - Google Chrome$' } | Select-Object -First 1;" +
+                                " if ($chrome) { $chrome.MainWindowTitle } else { 'No active tabs found.' }");
+                break;
 
+            case "firefox":
+                processBuilder = new ProcessBuilder("powershell.exe", "-Command",
+                        "$firefox = Get-Process firefox | Where-Object { $_.MainWindowTitle -ne '' -and $_.MainWindowTitle -notmatch 'Mozilla Firefox' } | Select-Object -First 1;" +
+                                " if ($firefox) { $firefox.MainWindowTitle } else { 'No active tabs found.' }");
+                break;
 
-        BufferedReader bufferedReader=new BufferedReader(new InputStreamReader(inputStream));
-        String activeTabUrl= bufferedReader.readLine();
+            default:
+                return "Browser not supported for fetching active tab URL.";
+        }
 
-        bufferedReader.close();
+        Process process = processBuilder.start();
 
-        System.out.println("Active browser: "+activeTabUrl);
-
-        return activeTabUrl;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            return Optional.ofNullable(reader.readLine()).orElse("No active tabs found.");
+        }
     }
 }
